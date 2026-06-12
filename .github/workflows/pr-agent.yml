@@ -16,6 +16,11 @@ jobs:
     if: github.event.sender.type != 'Bot'
     runs-on: ubuntu-latest
     steps:
+      - name: Mark review start
+        id: review_window
+        shell: bash
+        run: echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - name: PR Agent action step
         uses: the-pr-agent/pr-agent@main
         env:
@@ -23,8 +28,58 @@ jobs:
           config__model: "deepseek/deepseek-v4-flash"
           config__fallback_models: '["deepseek/deepseek-v4-flash"]'
           config__custom_model_max_tokens: "1000000"
+          config__response_language: "zh-CN"
           deepseek__key: ${{ secrets.DEEPSEEK_API_KEY }}
           github_action_config__auto_describe: "true"
           github_action_config__auto_review: "true"
           github_action_config__auto_improve: "true"
           github_action_config__pr_actions: '["opened", "reopened", "ready_for_review", "synchronize"]'
+
+      - name: AI Review Gate
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = context.payload.pull_request.number;
+            const startedAt = new Date('${{ steps.review_window.outputs.started_at }}');
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const currentRunComments = comments.filter((comment) => {
+              const author = comment.user?.login || '';
+              const body = comment.body || '';
+              const updatedAt = new Date(comment.updated_at);
+              return author === 'github-actions[bot]'
+                && updatedAt >= startedAt
+                && body.includes('PR Code Suggestions');
+            });
+
+            const blockingComment = currentRunComments.find((comment) => {
+              const body = comment.body || '';
+              const hasSuggestionTable = body.includes('Suggestion') && body.includes('Impact');
+              const hasExpandableSuggestion = body.includes('<details') || body.includes('▶');
+              const saysNoSuggestions = /no\s+(code\s+)?suggestions/i.test(body)
+                || /没有.*建议/.test(body)
+                || /未发现.*建议/.test(body);
+              return hasSuggestionTable && hasExpandableSuggestion && !saysNoSuggestions;
+            });
+
+            if (blockingComment) {
+              core.summary
+                .addHeading('AI Review Gate')
+                .addRaw('PR-Agent generated code suggestions for this PR. Treat this commit as blocked: fix the issues, push a new commit, and let PR-Agent run again.')
+                .write();
+              core.setFailed('AI review found actionable code suggestions. Do not merge until they are addressed.');
+            } else {
+              core.summary
+                .addHeading('AI Review Gate')
+                .addRaw('No blocking PR-Agent code suggestions were detected in this run.')
+                .write();
+            }

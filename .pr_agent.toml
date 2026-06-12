@@ -3,6 +3,7 @@ model = "deepseek/deepseek-v4-flash"
 fallback_models = ["deepseek/deepseek-v4-flash"]
 custom_model_max_tokens = 1000000
 output_relevant_configurations = true
+response_language = "zh-CN"
 
 [pr_reviewer]
 extra_instructions = """
@@ -10,4 +11,11 @@ extra_instructions = """
 - 只评论可执行的问题，不要给泛泛的风格建议。
 - 优先关注边界条件、业务逻辑错误、安全问题、测试缺失。
 - 每条评论尽量包含：问题、风险、建议修复方式。
+"""
+
+[pr_code_suggestions]
+extra_instructions = """
+- 请用中文输出所有动态内容，包括建议标题、问题说明、影响说明和修复建议。
+- 只给出会影响正确性、安全性、数据一致性或测试有效性的建议。
+- 如果发现关键问题，请明确指出该 PR 不应合并，需修改后重新触发审查。
 """
