@@ -11,3 +11,9 @@ def test_calculate_final_price_caps_vip_discount():
 
 def test_format_receipt():
     assert format_receipt("cust-123", 80.0) == "Customer cust-123 paid 80.0"
+
+
+def test_apply_coupon_percent_code():
+    from order_discount import apply_coupon
+
+    assert apply_coupon(100.0, "PERCENT:10", "vip") == 90.0
